@@ -1,0 +1,18 @@
+{
+  "appName": "My Web App",
+  "websiteUrl": "https://example.com",
+  "pullToRefresh": true,
+  "offlineMode": true,
+  "biometricAuth": false,
+  "keepScreenOn": false,
+  "enableZoom": false,
+  "customUserAgent": "",
+  "clearCacheOnExit": false,
+  "enableDownloads": true,
+  "enableAdMob": false,
+  "adMobBannerId": "",
+  "adMobInterstitialId": "",
+  "interstitialIntervalMinutes": 5,
+  "exitConfirmation": true,
+  "themeColor": "#2563EB"
+}

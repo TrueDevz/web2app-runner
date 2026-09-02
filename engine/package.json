@@ -1,0 +1,13 @@
+{
+  "name": "webtoapp-engine",
+  "version": "1.0.0",
+  "description": "Native Android & Desktop Automated Build Engine for WebsiteToApp SaaS",
+  "main": "scripts/build_compiler.js",
+  "scripts": {
+    "test-build": "node scripts/test_cli.js"
+  },
+  "dependencies": {
+    "fs-extra": "^11.2.0",
+    "jimp": "^0.22.12"
+  }
+}

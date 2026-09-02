@@ -1,0 +1,67 @@
+name: WebToApp Cloud Android Builder 🚀
+
+on:
+  repository_dispatch:
+    types: [build_android]
+  workflow_dispatch:
+    inputs:
+      build_config:
+        description: 'JSON Build Configuration Payload'
+        required: true
+        default: '{"buildId":"test_cloud","appName":"Demo App","packageId":"com.example.demo","websiteUrl":"https://websitetoapp.app"}'
+
+jobs:
+  build:
+    name: Compile Signed APK & Google Play AAB Bundle
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Check out repository
+        uses: actions/checkout@v4
+
+      - name: ☕ Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: 📱 Set up Android SDK & Command Line Tools
+        uses: android-actions/setup-android@v3
+
+      - name: 🐘 Set up Gradle 9.5
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.5'
+
+      - name: 📦 Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache-dependency-path: engine/package.json
+
+      - name: 🛠️ Install Engine Dependencies
+        run: |
+          cd engine
+          npm install --save @aws-sdk/client-s3 fs-extra jimp node-fetch
+
+      - name: 🚀 Execute Native Android Cloud Compiler
+        env:
+          BUILD_CONFIG_JSON: ${{ github.event.client_payload && toJson(github.event.client_payload) || inputs.build_config }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME || 'webtoapp-builds' }}
+          R2_PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
+        run: |
+          node engine/scripts/cloud_runner.js
+
+      - name: 📤 Upload Build Artifacts to GitHub Actions (Backup)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-app-artifacts
+          path: |
+            engine/output/**/app-release.apk
+            engine/output/**/app-release.aab
+            engine/output/**/release.keystore
+          if-no-files-found: ignore

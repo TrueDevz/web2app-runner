@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">My Web App</string>
+    <string name="admob_app_id">ca-app-pub-3940256099942544~3347511713</string>
+    <string name="admob_banner_id">ca-app-pub-3940256099942544/6300978111</string>
+    <string name="admob_interstitial_id">ca-app-pub-3940256099942544/1033173712</string>
+    <string name="offline_title">No Internet Connection</string>
+    <string name="offline_desc">Please check your network settings and try again.</string>
+    <string name="retry">Retry</string>
+    <string name="exit_confirm">Press back again to exit</string>
+</resources>
