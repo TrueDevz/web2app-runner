@@ -45,31 +45,76 @@ async function uploadToR2(filePath, r2Key, r2Config) {
     }
 }
 
+async function sendWebhook(callbackUrl, payload) {
+    if (!callbackUrl) return;
+    try {
+        const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
+        await fetch(callbackUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+    } catch (e) {
+        console.warn('[Webhook] Notice:', e.message);
+    }
+}
+
 async function main() {
     console.log('🚀 WebToApp Cloud Android Runner Initialized (GitHub Actions)...');
 
-    // Read config from file or environment
     let config = null;
     const configPath = process.env.BUILD_CONFIG_PATH || path.join(__dirname, '..', 'build_config.json');
 
     if (fs.existsSync(configPath)) {
         config = fs.readJsonSync(configPath);
-    } else if (process.env.BUILD_CONFIG_JSON) {
-        const raw = JSON.parse(process.env.BUILD_CONFIG_JSON);
-        config = raw.config || raw.buildConfig || raw;
-        if (raw.callbackUrl && !config.callbackUrl) config.callbackUrl = raw.callbackUrl;
-        if (raw.buildId && !config.buildId) config.buildId = raw.buildId;
     } else {
-        console.error('❌ Error: No build config provided (BUILD_CONFIG_PATH or BUILD_CONFIG_JSON missing)');
+        const rawPayload = process.env.CLIENT_PAYLOAD_JSON || process.env.INPUT_BUILD_CONFIG || process.env.BUILD_CONFIG_JSON;
+        if (rawPayload && typeof rawPayload === 'string' && rawPayload !== 'true' && rawPayload !== 'false') {
+            try {
+                const parsed = JSON.parse(rawPayload);
+                config = parsed.config || parsed.buildConfig || parsed;
+                if (parsed.callbackUrl && !config.callbackUrl) config.callbackUrl = parsed.callbackUrl;
+                if (parsed.buildId && !config.buildId) config.buildId = parsed.buildId;
+            } catch (e) {
+                console.error('Failed to parse JSON payload:', e);
+            }
+        }
+    }
+
+    if (!config || !config.websiteUrl) {
+        console.error('❌ Error: No valid build config provided.');
         process.exit(1);
     }
 
+    const callbackUrl = process.env.CALLBACK_URL || config.callbackUrl;
+
     console.log(`\n📦 Compiling App: ${config.appName} (${config.packageId})`);
-    console.log(`🌐 Target URL: ${config.websiteUrl}\n`);
+    console.log(`🌐 Target URL: ${config.websiteUrl}`);
+    console.log(`📡 Callback Webhook: ${callbackUrl || 'None'}\n`);
+
+    // Notify SaaS site that compilation has officially begun
+    await sendWebhook(callbackUrl, {
+        buildId: config.buildId,
+        stage: 'COMPILING',
+        percent: 35,
+        message: 'Cloud VM running Gradle 8.5 & Android SDK 34 compiler...',
+        isComplete: false,
+        isError: false,
+    });
 
     try {
-        const result = await compileApp(config, (progress) => {
+        const result = await compileApp(config, async (progress) => {
             console.log(`[PROGRESS ${progress.percent}%] [${progress.stage}] ${progress.message}`);
+            if (progress.percent > 0 && progress.percent < 100) {
+                await sendWebhook(callbackUrl, {
+                    buildId: config.buildId,
+                    stage: progress.stage,
+                    percent: progress.percent,
+                    message: progress.message,
+                    isComplete: false,
+                    isError: false,
+                });
+            }
         });
 
         console.log('\n========================================');
@@ -105,29 +150,15 @@ async function main() {
         }
 
         // Webhook notification back to SaaS site
-        const callbackUrl = process.env.CALLBACK_URL || config.callbackUrl;
-        if (callbackUrl) {
-            console.log(`📡 Sending completion webhook to ${callbackUrl}...`);
-            try {
-                const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
-                await fetch(callbackUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        buildId: config.buildId,
-                        isComplete: true,
-                        isError: false,
-                        apkUrl: r2ApkUrl,
-                        aabUrl: r2AabUrl,
-                        keystoreUrl: r2KeystoreUrl,
-                        completedAt: new Date().toISOString(),
-                    }),
-                });
-                console.log('✅ Webhook callback delivered successfully!');
-            } catch (cbErr) {
-                console.warn('⚠️ Webhook callback failed:', cbErr.message);
-            }
-        }
+        await sendWebhook(callbackUrl, {
+            buildId: config.buildId,
+            isComplete: true,
+            isError: false,
+            apkUrl: r2ApkUrl,
+            aabUrl: r2AabUrl,
+            keystoreUrl: r2KeystoreUrl,
+            completedAt: new Date().toISOString(),
+        });
 
         console.log('\n🌟 CLOUD RUNNER FINISHED SUCCESSFULLY!\n');
         process.exit(0);
@@ -135,22 +166,12 @@ async function main() {
         console.error('\n❌ BUILD FAILED:');
         console.error(err);
 
-        const callbackUrl = process.env.CALLBACK_URL || config?.callbackUrl;
-        if (callbackUrl && config?.buildId) {
-            try {
-                const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
-                await fetch(callbackUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        buildId: config.buildId,
-                        isComplete: true,
-                        isError: true,
-                        errorMessage: err.message,
-                    }),
-                });
-            } catch (e) {}
-        }
+        await sendWebhook(callbackUrl, {
+            buildId: config?.buildId,
+            isComplete: true,
+            isError: true,
+            errorMessage: err.message,
+        });
 
         process.exit(1);
     }
