@@ -55,7 +55,10 @@ async function main() {
     if (fs.existsSync(configPath)) {
         config = fs.readJsonSync(configPath);
     } else if (process.env.BUILD_CONFIG_JSON) {
-        config = JSON.parse(process.env.BUILD_CONFIG_JSON);
+        const raw = JSON.parse(process.env.BUILD_CONFIG_JSON);
+        config = raw.config || raw.buildConfig || raw;
+        if (raw.callbackUrl && !config.callbackUrl) config.callbackUrl = raw.callbackUrl;
+        if (raw.buildId && !config.buildId) config.buildId = raw.buildId;
     } else {
         console.error('❌ Error: No build config provided (BUILD_CONFIG_PATH or BUILD_CONFIG_JSON missing)');
         process.exit(1);
