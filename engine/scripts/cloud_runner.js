@@ -46,16 +46,22 @@ async function uploadToR2(filePath, r2Key, r2Config) {
 }
 
 async function sendWebhook(callbackUrl, payload) {
-    if (!callbackUrl) return;
+    if (!callbackUrl) {
+        console.warn('⚠️ No callback webhook URL provided in payload.');
+        return;
+    }
+    console.log(`📡 Sending Webhook to: ${callbackUrl}`);
+    console.log(`📦 Webhook Payload:`, JSON.stringify(payload));
     try {
-        const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
-        await fetch(callbackUrl, {
+        const res = await fetch(callbackUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
+        const resText = await res.text();
+        console.log(`📡 Webhook Response (${res.status}): ${resText}`);
     } catch (e) {
-        console.warn('[Webhook] Notice:', e.message);
+        console.warn('⚠️ Webhook Error:', e.message);
     }
 }
 
@@ -97,7 +103,7 @@ async function main() {
         buildId: config.buildId,
         stage: 'COMPILING',
         percent: 35,
-        message: 'Cloud VM running Gradle 8.5 & Android SDK 34 compiler...',
+        message: 'Cloud VM running Gradle 8.9 & Android SDK 35 compiler...',
         isComplete: false,
         isError: false,
     });
