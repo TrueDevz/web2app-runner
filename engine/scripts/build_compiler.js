@@ -214,30 +214,65 @@ async function compileApp(config, onProgress) {
         const formattedSdkPath = isWin ? SDK_PATH.replace(/\\/g, '/') : SDK_PATH;
         await fs.writeFile(localPropsPath, `sdk.dir=${formattedSdkPath}\n`, 'utf8');
 
-        // Step 4: Generate Release Keystore
-        notify('SIGNING', 55, 'Generating cryptographic release keystore...');
+        // Step 4: Setup Release Keystore (Existing or Auto-Generated)
+        notify('SIGNING', 55, 'Preparing cryptographic release signing keystore...');
         const keystorePath = path.join(workspaceDir, 'release.jks');
-        const storePass = 'webtoapp123';
-        const keyAlias = 'releaseKey';
-        const keyPass = 'webtoapp123';
+        const storePass = config.keystorePassword || 'webtoapp123';
+        const keyAlias = config.keyAlias || 'releaseKey';
+        const keyPass = config.keyPassword || storePass;
 
-        const keytoolArgs = [
-            '-genkeypair',
-            '-v',
-            '-keystore', keystorePath,
-            '-alias', keyAlias,
-            '-keyalg', 'RSA',
-            '-keysize', '2048',
-            '-validity', '10000',
-            '-storepass', storePass,
-            '-keypass', keyPass,
-            '-dname', 'CN=WebToApp,OU=AppBuilder,O=WebToApp,L=City,ST=State,C=US'
-        ];
+        let hasKeystore = false;
 
-        try {
-            await runCommand(KEYTOOL_PATH, keytoolArgs);
-        } catch (kErr) {
-            console.warn('[Keystore] Notice:', kErr.message);
+        // Option A: Base64 Keystore payload provided
+        if (config.keystoreBase64) {
+            try {
+                const base64Data = config.keystoreBase64.replace(/^data:[^;]+;base64,/, '');
+                await fs.writeFile(keystorePath, Buffer.from(base64Data, 'base64'));
+                hasKeystore = true;
+                console.log('[Keystore] Reusing provided custom base64 Keystore');
+            } catch (e) {
+                console.warn('[Keystore] Base64 write error:', e.message);
+            }
+        }
+
+        // Option B: Download existing Keystore from Cloudflare R2 URL
+        const existingKeyUrl = config.existingKeystoreUrl || config.keystoreUrl;
+        if (!hasKeystore && existingKeyUrl && (existingKeyUrl.startsWith('http://') || existingKeyUrl.startsWith('https://'))) {
+            try {
+                console.log(`[Keystore] Downloading existing release keystore from ${existingKeyUrl}...`);
+                const keyRes = await fetch(existingKeyUrl);
+                if (keyRes.ok) {
+                    const keyBuffer = await keyRes.arrayBuffer();
+                    await fs.writeFile(keystorePath, Buffer.from(keyBuffer));
+                    hasKeystore = true;
+                    console.log('[Keystore] Successfully attached existing release keystore for Play Store update compatibility!');
+                }
+            } catch (dlErr) {
+                console.warn('[Keystore] Failed to download existing keystore, generating new:', dlErr.message);
+            }
+        }
+
+        // Option C: Auto-generate new Keystore if none exists
+        if (!hasKeystore) {
+            console.log('[Keystore] Generating fresh cryptographic release keystore with keytool...');
+            const keytoolArgs = [
+                '-genkeypair',
+                '-v',
+                '-keystore', keystorePath,
+                '-alias', keyAlias,
+                '-keyalg', 'RSA',
+                '-keysize', '2048',
+                '-validity', '10000',
+                '-storepass', storePass,
+                '-keypass', keyPass,
+                '-dname', 'CN=WebToApp,OU=AppBuilder,O=WebToApp,L=City,ST=State,C=US'
+            ];
+
+            try {
+                await runCommand(KEYTOOL_PATH, keytoolArgs);
+            } catch (kErr) {
+                console.warn('[Keystore] Keytool notice:', kErr.message);
+            }
         }
 
         // Step 5: Gradle Compilation
