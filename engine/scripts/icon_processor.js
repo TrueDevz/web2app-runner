@@ -11,18 +11,30 @@ const SIZES = {
 };
 
 /**
- * Generates all Android mipmap icons from a source image
- * @param {string} sourceImagePath - Path to source image or data URL
+ * Generates all Android mipmap icons from a source image or base64 string
+ * @param {string} sourceImagePath - Path to source image or base64 string
  * @param {string} resDirPath - Path to android project res directory
  * @param {string} themeColorHex - Primary color for default/fallback icon
  */
 async function processIcons(sourceImagePath, resDirPath, themeColorHex = '#2563EB') {
     let sourceImage;
 
-    if (sourceImagePath && fs.existsSync(sourceImagePath)) {
-        sourceImage = await Jimp.read(sourceImagePath);
-    } else {
-        // Generate a clean branded icon
+    try {
+        if (sourceImagePath && typeof sourceImagePath === 'string') {
+            if (sourceImagePath.startsWith('data:image') || sourceImagePath.length > 500) {
+                const base64Data = sourceImagePath.replace(/^data:image\/\w+;base64,/, '');
+                const buffer = Buffer.from(base64Data, 'base64');
+                sourceImage = await Jimp.read(buffer);
+            } else if (fs.existsSync(sourceImagePath)) {
+                sourceImage = await Jimp.read(sourceImagePath);
+            } else {
+                sourceImage = new Jimp(512, 512, themeColorHex);
+            }
+        } else {
+            sourceImage = new Jimp(512, 512, themeColorHex);
+        }
+    } catch (e) {
+        console.warn('[Icon Processor] Failed to parse custom icon, falling back to brand color icon:', e.message);
         sourceImage = new Jimp(512, 512, themeColorHex);
     }
 
@@ -43,12 +55,3 @@ async function processIcons(sourceImagePath, resDirPath, themeColorHex = '#2563E
 }
 
 module.exports = { processIcons, SIZES };
-
-if (require.main === module) {
-    const resDir = path.join(__dirname, '../templates/android-base/app/src/main/res');
-    processIcons(null, resDir, '#2563EB').then(() => {
-        console.log('Default icons generated successfully.');
-    }).catch(err => {
-        console.error('Error generating icons:', err);
-    });
-}

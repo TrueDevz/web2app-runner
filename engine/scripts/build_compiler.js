@@ -1,13 +1,13 @@
 const fs = require('fs-extra');
 const path = require('path');
-const { exec, spawn } = require('child_process');
+const { spawn } = require('child_process');
 const { processIcons } = require('./icon_processor');
 
 const isWin = process.platform === 'win32';
 const SDK_PATH = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT || (isWin ? 'C:\\Users\\PixVibe\\AppData\\Local\\Android\\Sdk' : '/usr/local/lib/android/sdk');
-const JAVA_HOME = process.env.JAVA_HOME || (isWin ? 'C:\\Program Files\\Java\\jdk-21.0.12' : '/usr/lib/jvm/default-java');
-const KEYTOOL_PATH = isWin ? path.join(JAVA_HOME, 'bin', 'keytool.exe') : 'keytool';
-const GRADLE_BIN = process.env.GRADLE_BIN || (isWin ? 'C:\\gradle-9.5.0\\bin\\gradle.bat' : 'gradle');
+const JAVA_HOME = process.env.JAVA_HOME || (isWin ? 'C:\\Program Files\\Java\\jdk-21.0.12' : undefined);
+const KEYTOOL_PATH = isWin ? (JAVA_HOME ? path.join(JAVA_HOME, 'bin', 'keytool.exe') : 'keytool') : 'keytool';
+const GRADLE_BIN = isWin ? (process.env.GRADLE_BIN || 'C:\\gradle-9.5.0\\bin\\gradle.bat') : 'gradle';
 
 /**
  * Executes a shell command with promise and progress logging
@@ -17,15 +17,23 @@ function runCommand(command, args, options = {}, onLog) {
         const fullCmd = `${command} ${args.join(' ')}`;
         if (onLog) onLog(`[RUN] ${fullCmd}`);
 
+        const pathEnvName = isWin ? 'Path' : 'PATH';
+        const pathSeparator = isWin ? ';' : ':';
+        const currentPath = process.env.PATH || process.env.Path || '';
+        const binPath = JAVA_HOME ? path.join(JAVA_HOME, 'bin') : '';
+        const combinedPath = binPath ? `${binPath}${pathSeparator}${currentPath}` : currentPath;
+
+        const procEnv = {
+            ...process.env,
+            [pathEnvName]: combinedPath,
+        };
+        if (JAVA_HOME) procEnv.JAVA_HOME = JAVA_HOME;
+        if (SDK_PATH) procEnv.ANDROID_HOME = SDK_PATH;
+
         const proc = spawn(command, args, {
             ...options,
             shell: true,
-            env: {
-                ...process.env,
-                JAVA_HOME: JAVA_HOME,
-                ANDROID_HOME: SDK_PATH,
-                Path: `${JAVA_HOME}\\bin;${process.env.Path}`
-            }
+            env: procEnv,
         });
 
         let stdout = '';
@@ -85,13 +93,15 @@ async function compileApp(config, onProgress) {
         // Step 2: Ingest Assets & Icons
         notify('ASSETS', 25, 'Processing and generating application launcher icons...');
         const resDir = path.join(workspaceDir, 'app', 'src', 'main', 'res');
-        await processIcons(config.iconPath, resDir, config.themeColor || '#2563EB');
+        await processIcons(config.iconBase64 || config.iconPath, resDir, config.themeColor || '#2563EB');
 
         // Step 3: Inject Configuration
         notify('CONFIGURING', 40, 'Injecting app configuration and custom styling...');
 
         // 3.1 app_config.json
-        const appConfigPath = path.join(workspaceDir, 'app', 'src', 'main', 'assets', 'app_config.json');
+        const assetsDir = path.join(workspaceDir, 'app', 'src', 'main', 'assets');
+        await fs.ensureDir(assetsDir);
+        const appConfigPath = path.join(assetsDir, 'app_config.json');
         const runtimeConfig = {
             appName: config.appName || 'My Web App',
             websiteUrl: config.websiteUrl || 'https://example.com',
@@ -199,9 +209,10 @@ async function compileApp(config, onProgress) {
             console.error('Error configuring deep link host:', e);
         }
 
-        // 3.5 local.properties
+        // 3.6 local.properties
         const localPropsPath = path.join(workspaceDir, 'local.properties');
-        await fs.writeFile(localPropsPath, `sdk.dir=${SDK_PATH.replace(/\\/g, '\\\\')}\n`, 'utf8');
+        const formattedSdkPath = isWin ? SDK_PATH.replace(/\\/g, '/') : SDK_PATH;
+        await fs.writeFile(localPropsPath, `sdk.dir=${formattedSdkPath}\n`, 'utf8');
 
         // Step 4: Generate Release Keystore
         notify('SIGNING', 55, 'Generating cryptographic release keystore...');
@@ -213,18 +224,18 @@ async function compileApp(config, onProgress) {
         const keytoolArgs = [
             '-genkeypair',
             '-v',
-            '-keystore', `"${keystorePath}"`,
+            '-keystore', keystorePath,
             '-alias', keyAlias,
             '-keyalg', 'RSA',
             '-keysize', '2048',
             '-validity', '10000',
             '-storepass', storePass,
             '-keypass', keyPass,
-            '-dname', `"CN=${config.appName || 'WebToApp'}, OU=AppBuilder, O=WebToApp, L=City, S=State, C=US"`
+            '-dname', `CN=${config.appName || 'WebToApp'}, OU=AppBuilder, O=WebToApp, L=City, S=State, C=US`
         ];
 
         try {
-            await runCommand(`"${KEYTOOL_PATH}"`, keytoolArgs);
+            await runCommand(KEYTOOL_PATH, keytoolArgs);
         } catch (kErr) {
             console.warn('[Keystore] Notice:', kErr.message);
         }
@@ -235,14 +246,14 @@ async function compileApp(config, onProgress) {
         const gradleArgs = [
             'assembleRelease',
             'bundleRelease',
-            `-PKEYSTORE_PATH="${keystorePath.replace(/\\/g, '/')}"`,
+            `-PKEYSTORE_PATH=${keystorePath.replace(/\\/g, '/')}`,
             `-PKEYSTORE_PASSWORD=${storePass}`,
             `-PKEY_ALIAS=${keyAlias}`,
             `-PKEY_PASSWORD=${keyPass}`,
             '--no-daemon'
         ];
 
-        await runCommand(`"${GRADLE_BIN}"`, gradleArgs, { cwd: workspaceDir }, (msg) => {
+        await runCommand(GRADLE_BIN, gradleArgs, { cwd: workspaceDir }, (msg) => {
             notify('COMPILING', 75, `Gradle: ${msg.slice(0, 100)}`);
         });
 
@@ -274,9 +285,9 @@ async function compileApp(config, onProgress) {
             buildId,
             appName: config.appName,
             packageId,
-            apkPath: targetApk,
-            aabPath: (await fs.pathExists(targetAab)) ? targetAab : null,
-            keystorePath: targetKeystore,
+            apkPath: (await fs.pathExists(targetApk)) ? targetApk : (await fs.pathExists(generatedApk) ? generatedApk : null),
+            aabPath: (await fs.pathExists(targetAab)) ? targetAab : (await fs.pathExists(generatedAab) ? generatedAab : null),
+            keystorePath: (await fs.pathExists(targetKeystore)) ? targetKeystore : keystorePath,
             apkFileName: path.basename(targetApk),
             aabFileName: path.basename(targetAab),
             keystoreFileName: path.basename(targetKeystore),
@@ -290,7 +301,7 @@ async function compileApp(config, onProgress) {
 }
 
 function escapeXml(unsafe) {
-    return unsafe.replace(/[<>&'"]/g, (c) => {
+    return String(unsafe || '').replace(/[<>&'"]/g, (c) => {
         switch (c) {
             case '<': return '&lt;';
             case '>': return '&gt;';
@@ -302,25 +313,20 @@ function escapeXml(unsafe) {
 }
 
 function sanitizePackageId(id) {
-    const clean = id.toLowerCase().replace(/[^a-z0-9_.]/g, '');
-    if (!clean.includes('.')) return `com.webtoapp.${clean}`;
-    return clean;
-}
-
-function slugify(text) {
-    return text.toString().toLowerCase().trim()
-        .replace(/\s+/g, '-')
-        .replace(/[^\w\-]+/g, '')
-        .replace(/\-\-+/g, '-');
+    return id.replace(/[^a-zA-Z0-9._]/g, '').toLowerCase();
 }
 
 function darkenHex(hex, percent) {
-    let num = parseInt(hex.replace('#', ''), 16),
-        amt = Math.round(2.55 * percent),
-        R = (num >> 16) - amt,
-        B = ((num >> 8) & 0x00FF) - amt,
-        G = (num & 0x0000FF) - amt;
-    return '#' + (0x1000000 + (R < 255 ? (R < 1 ? 0 : R) : 255) * 0x10000 + (B < 255 ? (B < 1 ? 0 : B) : 255) * 0x100 + (G < 255 ? (G < 1 ? 0 : G) : 255)).toString(16).slice(1);
+    const num = parseInt(hex.replace('#', ''), 16);
+    const amt = Math.round(2.55 * percent);
+    const R = Math.max(0, (num >> 16) - amt);
+    const G = Math.max(0, ((num >> 8) & 0x00FF) - amt);
+    const B = Math.max(0, (num & 0x0000FF) - amt);
+    return `#${((1 << 24) + (R << 16) + (G << 8) + B).toString(16).slice(1)}`;
+}
+
+function slugify(text) {
+    return text.toString().toLowerCase().trim().replace(/[\s\W-]+/g, '-');
 }
 
 module.exports = { compileApp };
