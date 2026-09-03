@@ -231,7 +231,7 @@ async function compileApp(config, onProgress) {
             '-validity', '10000',
             '-storepass', storePass,
             '-keypass', keyPass,
-            '-dname', `CN=${config.appName || 'WebToApp'}, OU=AppBuilder, O=WebToApp, L=City, S=State, C=US`
+            '-dname', 'CN=WebToApp,OU=AppBuilder,O=WebToApp,L=City,ST=State,C=US'
         ];
 
         try {
