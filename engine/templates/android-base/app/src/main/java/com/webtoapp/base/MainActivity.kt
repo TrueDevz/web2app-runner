@@ -453,6 +453,9 @@ class MainActivity : AppCompatActivity() {
         webView.addJavascriptInterface(WebAppInterface(this), "AndroidBridge")
 
         webView.webChromeClient = object : WebChromeClient() {
+            private var customView: View? = null
+            private var customViewCallback: CustomViewCallback? = null
+
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 if (newProgress < 100) {
                     binding.progressBar.visibility = View.VISIBLE
@@ -460,6 +463,33 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     binding.progressBar.visibility = View.GONE
                 }
+            }
+
+            override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
+                if (customView != null) {
+                    onHideCustomView()
+                    return
+                }
+                customView = view
+                customViewCallback = callback
+                binding.fullscreenContainer.addView(view)
+                binding.fullscreenContainer.visibility = View.VISIBLE
+                binding.swipeRefreshLayout.visibility = View.GONE
+                requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            }
+
+            override fun onHideCustomView() {
+                binding.fullscreenContainer.removeAllViews()
+                binding.fullscreenContainer.visibility = View.GONE
+                binding.swipeRefreshLayout.visibility = View.VISIBLE
+                customViewCallback?.onCustomViewHidden()
+                customView = null
+                customViewCallback = null
+                requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
+
+            override fun onPermissionRequest(request: PermissionRequest?) {
+                request?.grant(request.resources)
             }
 
             override fun onShowFileChooser(
