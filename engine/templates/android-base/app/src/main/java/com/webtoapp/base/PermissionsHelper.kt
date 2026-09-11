@@ -21,12 +21,17 @@ class PermissionsHelper(
     fun checkAndRequestAllPermissions(
         enableCamera: Boolean = true,
         enableLocation: Boolean = true,
-        enableNotifications: Boolean = true
+        enableNotifications: Boolean = true,
+        enableAudio: Boolean = true
     ) {
         val permissionsToRequest = mutableListOf<String>()
 
         if (enableCamera && ContextCompat.checkSelfPermission(activity, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             permissionsToRequest.add(Manifest.permission.CAMERA)
+        }
+
+        if (enableAudio && ContextCompat.checkSelfPermission(activity, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest.add(Manifest.permission.RECORD_AUDIO)
         }
 
         if (enableLocation && ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
