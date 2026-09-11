@@ -84,6 +84,10 @@ class SplashActivity : AppCompatActivity() {
             Intent(this, MainActivity::class.java)
         }
 
+        // Forward deep link data & notification extras to target Activity
+        intent?.data?.let { nextIntent.data = it }
+        intent?.extras?.let { nextIntent.putExtras(it) }
+
         startActivity(nextIntent)
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
         finish()

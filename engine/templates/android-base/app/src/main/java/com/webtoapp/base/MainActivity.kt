@@ -181,24 +181,78 @@ class MainActivity : AppCompatActivity() {
             showPinLockDialog()
         }
 
-        // Check if opened via notification with target URL
-        val targetUrl = intent?.getStringExtra("target_url")
-        if (!targetUrl.isNullOrBlank()) {
-            binding.webView.loadUrl(targetUrl)
-        } else if (intent?.data != null) {
-            // Handle Deep Link
-            binding.webView.loadUrl(intent.data.toString())
-        }
     }
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
-        val targetUrl = intent?.getStringExtra("target_url")
-        if (!targetUrl.isNullOrBlank()) {
-            binding.webView.loadUrl(targetUrl)
-        } else if (intent?.data != null) {
-            binding.webView.loadUrl(intent.data.toString())
+        setIntent(intent)
+        val resolvedUrl = resolveDeepLinkOrTargetUrl(intent)
+        if (!resolvedUrl.isNullOrBlank()) {
+            binding.webView.loadUrl(resolvedUrl)
         }
+    }
+
+    private fun resolveDeepLinkOrTargetUrl(sourceIntent: Intent?): String? {
+        if (sourceIntent == null) return null
+
+        // 1. Direct explicit target_url or url string extra
+        val explicitUrl = sourceIntent.getStringExtra("target_url") ?: sourceIntent.getStringExtra("url")
+        if (!explicitUrl.isNullOrBlank()) {
+            return normalizeToHttpUrl(explicitUrl)
+        }
+
+        // 2. Intent Data URI (Deep Link or App Link)
+        val dataUri = sourceIntent.data
+        if (dataUri != null) {
+            val scheme = dataUri.scheme?.lowercase() ?: ""
+            if (scheme == "http" || scheme == "https") {
+                return dataUri.toString()
+            }
+
+            // Custom Scheme (e.g. oxford://student/classroom or schoolai://portal)
+            val host = dataUri.host ?: ""
+            val path = dataUri.path ?: ""
+            val query = dataUri.query
+
+            val combinedPath = if (host.isNotBlank() && host != "open") {
+                "$host$path"
+            } else {
+                path.trimStart('/')
+            }
+
+            val base = websiteUrl.trimEnd('/')
+            val resolvedUrl = if (combinedPath.isNotBlank()) "$base/${combinedPath.trimStart('/')}" else base
+            return if (!query.isNullOrBlank()) "$resolvedUrl?$query" else resolvedUrl
+        }
+
+        // 3. OneSignal nested data payload in intent extras
+        val extras = sourceIntent.extras
+        if (extras != null) {
+            for (key in extras.keySet()) {
+                val value = extras.get(key)
+                if (value is String && (value.startsWith("http://") || value.startsWith("https://"))) {
+                    return value
+                }
+            }
+        }
+
+        return null
+    }
+
+    private fun normalizeToHttpUrl(rawUrl: String): String {
+        if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
+            return rawUrl
+        }
+        val base = websiteUrl.trimEnd('/')
+        return "$base/${rawUrl.trimStart('/')}"
+    }
+
+    private fun getInitialUrlToLoad(): String {
+        val resolved = resolveDeepLinkOrTargetUrl(intent)
+        if (!resolved.isNullOrBlank()) {
+            return resolved
+        }
+        return websiteUrl
     }
 
     private fun loadAppConfig() {
@@ -611,6 +665,17 @@ class MainActivity : AppCompatActivity() {
                         e.printStackTrace()
                     }
                 }
+
+                val uri = request?.url
+                val scheme = uri?.scheme?.lowercase() ?: ""
+                if (scheme.isNotBlank() && scheme != "http" && scheme != "https") {
+                    val resolved = resolveDeepLinkOrTargetUrl(Intent(Intent.ACTION_VIEW, uri))
+                    if (!resolved.isNullOrBlank() && (resolved.startsWith("http://") || resolved.startsWith("https://"))) {
+                        view?.loadUrl(resolved)
+                        return true
+                    }
+                }
+
                 return false
             }
         }
@@ -650,7 +715,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        webView.loadUrl(websiteUrl)
+        val initialUrl = getInitialUrlToLoad()
+        webView.loadUrl(initialUrl)
     }
 
     private fun setupSwipeRefresh() {

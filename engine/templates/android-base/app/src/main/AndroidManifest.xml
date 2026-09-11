@@ -61,13 +61,21 @@
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
             android:windowSoftInputMode="adjustResize">
 
-            <!-- Deep linking support -->
+            <!-- Verified Android App Links (HTTP / HTTPS) -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="http" />
-                <data android:scheme="https" />
+                <data android:scheme="https" android:host="DEEP_LINK_HOST" />
+                <data android:scheme="http" android:host="DEEP_LINK_HOST" />
+            </intent-filter>
+
+            <!-- Custom URI Scheme (e.g. oxford://... or myapp://...) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="CUSTOM_SCHEME" />
             </intent-filter>
         </activity>
 

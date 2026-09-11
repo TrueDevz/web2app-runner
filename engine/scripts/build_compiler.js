@@ -200,10 +200,16 @@ async function compileApp(config, onProgress) {
             try {
                 parsedHost = new URL(config.websiteUrl || 'https://example.com').hostname;
             } catch (e) {}
-            manifestContent = manifestContent.replace(
-                '<data android:scheme="https" />',
-                `<data android:scheme="https" android:host="${parsedHost}" />\n                <data android:scheme="http" android:host="${parsedHost}" />`
-            );
+
+            const customScheme = (config.customScheme || config.appName || 'web2app')
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, '')
+                .slice(0, 30) || 'web2app';
+
+            manifestContent = manifestContent
+                .replace(/DEEP_LINK_HOST/g, parsedHost)
+                .replace(/CUSTOM_SCHEME/g, customScheme);
+
             await fs.writeFile(manifestPath, manifestContent, 'utf8');
         } catch (e) {
             console.error('Error configuring deep link host:', e);
