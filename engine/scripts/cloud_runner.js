@@ -81,9 +81,27 @@ async function main() {
                 config = parsed.config || parsed.buildConfig || parsed;
                 if (parsed.callbackUrl && !config.callbackUrl) config.callbackUrl = parsed.callbackUrl;
                 if (parsed.buildId && !config.buildId) config.buildId = parsed.buildId;
+                if (parsed.configUrl && !config.configUrl) config.configUrl = parsed.configUrl;
             } catch (e) {
                 console.error('Failed to parse JSON payload:', e);
             }
+        }
+    }
+
+    // If full config URL was provided (used when client_payload was trimmed to stay within GitHub 64KB limit), fetch full config:
+    if (config && config.configUrl) {
+        console.log(`📡 Fetching full build configuration from SaaS Cloud: ${config.configUrl}`);
+        try {
+            const fetchRes = await fetch(config.configUrl);
+            if (fetchRes.ok) {
+                const fetchedConfig = await fetchRes.json();
+                config = { ...fetchedConfig, ...config };
+                console.log('✅ Successfully loaded complete build configuration!');
+            } else {
+                console.warn(`⚠️ Warning: Remote config fetch returned status ${fetchRes.status}`);
+            }
+        } catch (fetchErr) {
+            console.warn('⚠️ Warning: Error fetching remote config, proceeding with inline payload:', fetchErr.message);
         }
     }
 

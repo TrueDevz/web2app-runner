@@ -25,6 +25,11 @@ async function processIcons(sourceImagePath, resDirPath, themeColorHex = '#2563E
                 const base64Data = sourceImagePath.replace(/^data:image\/\w+;base64,/, '');
                 const buffer = Buffer.from(base64Data, 'base64');
                 sourceImage = await Jimp.read(buffer);
+            } else if (sourceImagePath.startsWith('http://') || sourceImagePath.startsWith('https://')) {
+                console.log(`[Icon Processor] Downloading custom icon from URL: ${sourceImagePath}`);
+                const res = await fetch(sourceImagePath);
+                const buffer = Buffer.from(await res.arrayBuffer());
+                sourceImage = await Jimp.read(buffer);
             } else if (fs.existsSync(sourceImagePath)) {
                 sourceImage = await Jimp.read(sourceImagePath);
             } else {
