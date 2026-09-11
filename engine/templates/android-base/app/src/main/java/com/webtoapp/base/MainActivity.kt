@@ -27,6 +27,9 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.webtoapp.base.databinding.ActivityMainBinding
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import org.json.JSONObject
 
 data class TopBarAction(val id: String, val icon: String, val actionType: String, val url: String = "")
@@ -108,9 +111,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private var pendingWebPermissionRequest: PermissionRequest? = null
     private val requestPermissionsLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { _ -> }
+    ) { _ ->
+        runOnUiThread {
+            pendingWebPermissionRequest?.let { req ->
+                req.grant(req.resources)
+            }
+            pendingWebPermissionRequest = null
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -444,6 +455,11 @@ class MainActivity : AppCompatActivity() {
         settings.useWideViewPort = true
         settings.loadWithOverviewMode = true
 
+        CookieManager.getInstance().apply {
+            setAcceptCookie(true)
+            setAcceptThirdPartyCookies(webView, true)
+        }
+
         if (customUserAgent.isNotBlank()) {
             settings.userAgentString = customUserAgent
         } else {
@@ -489,7 +505,29 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPermissionRequest(request: PermissionRequest?) {
-                request?.grant(request.resources)
+                if (request == null) return
+                runOnUiThread {
+                    val permsToRequest = mutableListOf<String>()
+                    for (r in request.resources) {
+                        if (r == PermissionRequest.RESOURCE_AUDIO_CAPTURE) {
+                            if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                                permsToRequest.add(Manifest.permission.RECORD_AUDIO)
+                            }
+                        }
+                        if (r == PermissionRequest.RESOURCE_VIDEO_CAPTURE) {
+                            if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                                permsToRequest.add(Manifest.permission.CAMERA)
+                            }
+                        }
+                    }
+
+                    if (permsToRequest.isNotEmpty()) {
+                        pendingWebPermissionRequest = request
+                        requestPermissionsLauncher.launch(permsToRequest.toTypedArray())
+                    } else {
+                        request.grant(request.resources)
+                    }
+                }
             }
 
             override fun onShowFileChooser(
@@ -536,12 +574,33 @@ class MainActivity : AppCompatActivity() {
                 if (customJs.isNotBlank()) {
                     webView.evaluateJavascript(customJs, null)
                 }
+
+                // Clear back history if user lands in classroom or dashboard after login so back button doesn't loop back to login
+                if (url != null && (url.contains("/student/classroom") || url.contains("/teacher/dashboard"))) {
+                    val backList = webView.copyBackForwardList()
+                    if (backList.currentIndex > 0) {
+                        val prev = backList.getItemAtIndex(backList.currentIndex - 1)
+                        if (prev != null && (prev.url.contains("/login") || prev.url.contains("/s/"))) {
+                            webView.clearHistory()
+                        }
+                    }
+                }
             }
 
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
 
-                if (url.startsWith("tel:") || url.startsWith("mailto:") || url.startsWith("sms:") ||
+                if (url.startsWith("tel:")) {
+                    try {
+                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse(url))
+                        startActivity(intent)
+                        return true
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+
+                if (url.startsWith("mailto:") || url.startsWith("sms:") ||
                     url.startsWith("whatsapp:") || url.startsWith("intent:") || url.startsWith("geo:")
                 ) {
                     try {
@@ -606,9 +665,39 @@ class MainActivity : AppCompatActivity() {
             override fun handleOnBackPressed() {
                 if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) {
                     binding.drawerLayout.closeDrawer(GravityCompat.START)
-                } else if (binding.webView.canGoBack()) {
+                    return
+                }
+
+                val currentUrl = binding.webView.url ?: ""
+                val isAtRootAppScreen = currentUrl.contains("/student/classroom") ||
+                                       currentUrl.contains("/teacher/dashboard") ||
+                                       currentUrl.endsWith("/student/login") ||
+                                       currentUrl.endsWith("/teacher/login") ||
+                                       currentUrl.contains("/portal")
+
+                if (isAtRootAppScreen) {
+                    handleExitConfirmation()
+                    return
+                }
+
+                if (binding.webView.canGoBack()) {
+                    val backList = binding.webView.copyBackForwardList()
+                    val prevIndex = backList.currentIndex - 1
+                    if (prevIndex >= 0) {
+                        val prevUrl = backList.getItemAtIndex(prevIndex)?.url ?: ""
+                        if (prevUrl.contains("/login") || prevUrl.contains("/s/")) {
+                            handleExitConfirmation()
+                            return
+                        }
+                    }
                     binding.webView.goBack()
-                } else if (exitConfirmation) {
+                } else {
+                    handleExitConfirmation()
+                }
+            }
+
+            private fun handleExitConfirmation() {
+                if (exitConfirmation) {
                     if (backPressedOnce) {
                         finish()
                     } else {

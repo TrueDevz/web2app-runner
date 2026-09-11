@@ -93,7 +93,7 @@ async function compileApp(config, onProgress) {
         // Step 2: Ingest Assets & Icons
         notify('ASSETS', 25, 'Processing and generating application launcher icons...');
         const resDir = path.join(workspaceDir, 'app', 'src', 'main', 'res');
-        await processIcons(config.iconBase64 || config.iconPath, resDir, config.themeColor || '#2563EB');
+        await processIcons(config.iconBase64 || config.iconPath || config.iconUrl, resDir, config.themeColor || '#2563EB');
 
         // Step 3: Inject Configuration
         notify('CONFIGURING', 40, 'Injecting app configuration and custom styling...');
@@ -129,7 +129,7 @@ async function compileApp(config, onProgress) {
             enableOnboarding: !!config.enableOnboarding,
             onboardingSlides: config.onboardingSlides || [],
             enableNotifications: config.enableNotifications !== false,
-            oneSignalAppId: config.oneSignalAppId || '',
+            oneSignalAppId: (config.oneSignalAppId && config.oneSignalAppId !== 'b2f7f966-d8cc-11e4-bed1-df8f05be55ba') ? config.oneSignalAppId : '',
             enableTopBar: !!config.enableTopBar,
             topBarTitle: config.topBarTitle || '',
             topBarActions: config.topBarActions || [],

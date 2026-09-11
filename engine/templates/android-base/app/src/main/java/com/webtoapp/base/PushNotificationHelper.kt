@@ -25,10 +25,11 @@ class PushNotificationHelper(private val context: Context) {
     }
 
     fun initOneSignal(appId: String) {
-        if (appId.isBlank()) return
+        if (appId.isBlank() || appId == "b2f7f966-d8cc-11e4-bed1-df8f05be55ba") return
         try {
             OneSignal.Debug.logLevel = LogLevel.VERBOSE
             OneSignal.initWithContext(context, appId)
+            OneSignal.InAppMessages.paused = true
             CoroutineScope(Dispatchers.IO).launch {
                 OneSignal.Notifications.requestPermission(true)
             }
