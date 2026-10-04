@@ -19,14 +19,19 @@ jobs:
       - name: 📥 Check out repository
         uses: actions/checkout@v4
 
-      - name: ☕ Set up JDK 21 (Temurin)
+      - name: ☕ Set up JDK 17 (Temurin)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '17'
 
-      - name: 📱 Set up Android SDK & Command Line Tools
-        uses: android-actions/setup-android@v3
+      - name: 📱 Accept Android SDK Licenses & Configure Environment
+        run: |
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> $GITHUB_ENV
+          if [ -f "/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          fi
 
       - name: 🐘 Set up Gradle 8.9 (Compatible with AGP 8.5+)
         uses: gradle/actions/setup-gradle@v3
